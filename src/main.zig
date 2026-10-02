@@ -38,30 +38,16 @@ pub fn main() !void {
     const stream = try rl.loadAudioStream(sample_rate, 16, 1);
     defer rl.unloadAudioStream(stream);
 
-    var pcm_buffer: [buffer_size]i16 = undefined;
-    var tone_hz: u32 = 256;
-    const volume: i16 = 2500;
-    var running_sample_index: u32 = 0;
+    var sound_buffer = game.SoundOutputBuffer{
+        .samples = try std.heap.page_allocator.alloc(i16, buffer_size),
+        .samples_per_second = sample_rate,
+    };
+    defer std.heap.page_allocator.free(sound_buffer.samples);
 
-    // 辅助函数：把正弦波填充逻辑封装一下，方便预填和每帧调用
-    const generateSineWave = struct {
-        fn fill(buf: []i16, hz: u32, vol: i16, s_rate: u32, run_idx: *u32) void {
-            const pi = std.math.pi;
-            for (buf) |*sample| {
-                const t = @as(f32, @floatFromInt(run_idx.*)) / @as(f32, @floatFromInt(s_rate));
-                const sine_ratio = @sin(2.0 * pi * @as(f32, @floatFromInt(hz)) * t);
-                sample.* = @intFromFloat(sine_ratio * @as(f32, @floatFromInt(vol)));
-                run_idx.* +%= 1;
-            }
-        }
-    }.fill;
-
-    // 【修改 2】：核心关键！在 Play 之前，连续 update 两次，填满两个子缓冲区（预热起跑）
-    generateSineWave(&pcm_buffer, tone_hz, volume, sample_rate, &running_sample_index);
-    rl.updateAudioStream(stream, &pcm_buffer, buffer_size);
-
-    generateSineWave(&pcm_buffer, tone_hz, volume, sample_rate, &running_sample_index);
-    rl.updateAudioStream(stream, &pcm_buffer, buffer_size);
+    game.getSoundSamples(&sound_buffer);
+    rl.updateAudioStream(stream, sound_buffer.samples.ptr, buffer_size);
+    game.getSoundSamples(&sound_buffer);
+    rl.updateAudioStream(stream, sound_buffer.samples.ptr, buffer_size);
 
     // 两个子缓冲区满载，现在开始播放！
     rl.playAudioStream(stream);
@@ -77,14 +63,14 @@ pub fn main() !void {
         keyboard.move_left.is_down = rl.isKeyDown(.a);
         keyboard.move_right.is_down = rl.isKeyDown(.d);
 
-        var game_buffer = game.GameOffScreenBuffer{
+        var game_buffer = game.OffScreenBuffer{
             .memory = @ptrCast(pixels.ptr),
             .width = width,
             .height = height,
             .pitch = width * 4,
         };
 
-        game.gameUpdateAndRender(&new_input, &game_buffer);
+        game.updateAndRender(&new_input, &game_buffer);
 
         rl.updateTexture(texture, pixels.ptr);
 
@@ -93,13 +79,10 @@ pub fn main() !void {
         rl.drawTexture(texture, 0, 0, .white);
         rl.endDrawing();
 
-        if (rl.isKeyDown(.up)) tone_hz +%= 1;
-        if (rl.isKeyDown(.down) and tone_hz > 60) tone_hz -%= 1;
-
         // 持续检查并喂饱消耗掉的缓冲区
         while (rl.isAudioStreamProcessed(stream)) {
-            generateSineWave(&pcm_buffer, tone_hz, volume, sample_rate, &running_sample_index);
-            rl.updateAudioStream(stream, &pcm_buffer, buffer_size);
+            game.getSoundSamples(&sound_buffer);
+            rl.updateAudioStream(stream, sound_buffer.samples.ptr, buffer_size);
         }
     }
 }
