@@ -1,6 +1,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const game = @import("game.zig");
+const game_api = @import("game_api.zig");
 
 const width = 800;
 const height = 450;
@@ -38,19 +39,11 @@ pub fn main() !void {
     const stream = try rl.loadAudioStream(sample_rate, 16, 1);
     defer rl.unloadAudioStream(stream);
 
-    var sound_buffer = game.SoundOutputBuffer{
+    var sound_buffer = game_api.SoundOutputBuffer{
         .samples = try std.heap.page_allocator.alloc(i16, buffer_size),
         .samples_per_second = sample_rate,
     };
     defer std.heap.page_allocator.free(sound_buffer.samples);
-
-    game.getSoundSamples(&sound_buffer);
-    rl.updateAudioStream(stream, sound_buffer.samples.ptr, buffer_size);
-    game.getSoundSamples(&sound_buffer);
-    rl.updateAudioStream(stream, sound_buffer.samples.ptr, buffer_size);
-
-    // 两个子缓冲区满载，现在开始播放！
-    rl.playAudioStream(stream);
 
     const perm_size = megaBytes(64);
     const trans_size = megaBytes(256);
@@ -60,7 +53,7 @@ pub fn main() !void {
     const trans_memory = try std.heap.page_allocator.alloc(u8, trans_size);
     defer std.heap.page_allocator.free(trans_memory);
 
-    var game_memory = game.GameMemory{
+    var game_memory = game_api.Memory{
         .is_initialized = false,
         .permanent_storage_size = perm_size,
         .permanent_storage = perm_memory.ptr,
@@ -68,8 +61,16 @@ pub fn main() !void {
         .transient_storage = trans_memory.ptr,
     };
 
+    game.getSoundSamples(&game_memory, &sound_buffer);
+    rl.updateAudioStream(stream, sound_buffer.samples.ptr, buffer_size);
+    game.getSoundSamples(&game_memory, &sound_buffer);
+    rl.updateAudioStream(stream, sound_buffer.samples.ptr, buffer_size);
+
+    // 两个子缓冲区满载，现在开始播放！
+    rl.playAudioStream(stream);
+
     while (!rl.windowShouldClose()) {
-        var new_input = game.GameInput{
+        var new_input = game_api.Input{
             .delta_time = rl.getFrameTime(),
         };
 
@@ -79,7 +80,7 @@ pub fn main() !void {
         keyboard.move_left.is_down = rl.isKeyDown(.a);
         keyboard.move_right.is_down = rl.isKeyDown(.d);
 
-        var game_buffer = game.OffScreenBuffer{
+        var game_buffer = game_api.OffScreenBuffer{
             .memory = @ptrCast(pixels.ptr),
             .width = width,
             .height = height,
@@ -97,7 +98,7 @@ pub fn main() !void {
 
         // 持续检查并喂饱消耗掉的缓冲区
         while (rl.isAudioStreamProcessed(stream)) {
-            game.getSoundSamples(&sound_buffer);
+            game.getSoundSamples(&game_memory, &sound_buffer);
             rl.updateAudioStream(stream, sound_buffer.samples.ptr, buffer_size);
         }
     }

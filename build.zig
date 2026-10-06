@@ -1,4 +1,5 @@
 const std = @import("std");
+const raylib_build = @import("build/raylib.zig");
 
 // Although this function looks imperative, it does not perform the build
 // directly and instead it mutates the build graph (`b`) that will be then
@@ -83,12 +84,8 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    const raylib_dep = b.dependency("raylib_zig", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    exe.root_module.addImport("raylib", raylib_dep.module("raylib"));
-    exe.root_module.linkLibrary(raylib_dep.artifact("raylib"));
+    const raylib = raylib_build.build(b, target, optimize);
+    exe.root_module.addImport("raylib", raylib);
 
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
@@ -118,9 +115,7 @@ pub fn build(b: *std.Build) void {
 
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 
     // Creates an executable that will run `test` blocks from the provided module.
     // Here `mod` needs to define a target, which is why earlier we made sure to
