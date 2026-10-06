@@ -19,7 +19,7 @@ fn getState(memory: *api.Memory) *GameState {
     return state;
 }
 
-pub fn updateAndRender(memory: *api.Memory, input: *const api.Input, buffer: *api.OffScreenBuffer) void {
+pub export fn updateAndRender(memory: *api.Memory, input: *const api.Input, buffer: *api.OffScreenBuffer) callconv(.c) void {
     const state = getState(memory);
 
     const controller = input.controllers[0];
@@ -50,15 +50,23 @@ pub fn updateAndRender(memory: *api.Memory, input: *const api.Input, buffer: *ap
     }
 }
 
-pub fn getSoundSamples(memory: *api.Memory, buffer: *api.SoundOutputBuffer) void {
+pub export fn getSoundSamples(memory: *api.Memory, buffer: *api.SoundOutputBuffer) callconv(.c) void {
     const state = getState(memory);
     const volume: i16 = 2500;
     const sample_rate: f32 = @floatFromInt(buffer.samples_per_second);
     const phase_step: f32 = 2.0 * std.math.pi * state.tone_hz / sample_rate;
 
-    for (0..buffer.samples.len) |i| {
+    for (0..buffer.samples_count) |i| {
         const index: f32 = @floatFromInt(state.running_sample_index);
         buffer.samples[i] = @intFromFloat(@sin(index * phase_step) * volume);
         state.running_sample_index +%= 1;
     }
+}
+
+comptime {
+    const update: api.UpdateAndRenderFn = &updateAndRender;
+    const sound: api.GetSoundSamplesFn = &getSoundSamples;
+
+    _ = update;
+    _ = sound;
 }

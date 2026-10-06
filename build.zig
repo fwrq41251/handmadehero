@@ -1,6 +1,12 @@
 const std = @import("std");
 const raylib_build = @import("build/raylib.zig");
 
+comptime {
+    if (!std.mem.eql(u8, @import("builtin").zig_version_string, "0.16.0")) {
+        @compileError("This project requires Zig 0.16.0. Run `mise install` and `mise exec -- zig build`.");
+    }
+}
+
 // Although this function looks imperative, it does not perform the build
 // directly and instead it mutates the build graph (`b`) that will be then
 // executed by an external runner. The functions in `std.Build` implement a DSL
@@ -115,7 +121,9 @@ pub fn build(b: *std.Build) void {
 
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`
-    run_cmd.addPassthruArgs();
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
 
     // Creates an executable that will run `test` blocks from the provided module.
     // Here `mod` needs to define a target, which is why earlier we made sure to

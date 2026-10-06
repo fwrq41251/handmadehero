@@ -39,11 +39,13 @@ pub fn main() !void {
     const stream = try rl.loadAudioStream(sample_rate, 16, 1);
     defer rl.unloadAudioStream(stream);
 
+    const samples = try std.heap.page_allocator.alloc(i16, buffer_size);
+    defer std.heap.page_allocator.free(samples);
     var sound_buffer = game_api.SoundOutputBuffer{
-        .samples = try std.heap.page_allocator.alloc(i16, buffer_size),
+        .samples = samples.ptr,
+        .samples_count = buffer_size,
         .samples_per_second = sample_rate,
     };
-    defer std.heap.page_allocator.free(sound_buffer.samples);
 
     const perm_size = megaBytes(64);
     const trans_size = megaBytes(256);
@@ -62,9 +64,9 @@ pub fn main() !void {
     };
 
     game.getSoundSamples(&game_memory, &sound_buffer);
-    rl.updateAudioStream(stream, sound_buffer.samples.ptr, buffer_size);
+    rl.updateAudioStream(stream, sound_buffer.samples, buffer_size);
     game.getSoundSamples(&game_memory, &sound_buffer);
-    rl.updateAudioStream(stream, sound_buffer.samples.ptr, buffer_size);
+    rl.updateAudioStream(stream, sound_buffer.samples, buffer_size);
 
     // 两个子缓冲区满载，现在开始播放！
     rl.playAudioStream(stream);
@@ -99,7 +101,7 @@ pub fn main() !void {
         // 持续检查并喂饱消耗掉的缓冲区
         while (rl.isAudioStreamProcessed(stream)) {
             game.getSoundSamples(&game_memory, &sound_buffer);
-            rl.updateAudioStream(stream, sound_buffer.samples.ptr, buffer_size);
+            rl.updateAudioStream(stream, sound_buffer.samples, buffer_size);
         }
     }
 }

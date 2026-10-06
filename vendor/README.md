@@ -1,7 +1,7 @@
 # Vendored Raylib dependencies
 
-The project builds with Zig 0.17.0. Its previous dependencies still use older
-Zig build APIs, so `build/raylib.zig` compiles these pinned sources directly.
+The project pins Zig 0.16.0 and ZLS 0.16.0 in `mise.toml`.
+`build/raylib.zig` compiles these pinned sources directly.
 No package cache edits or dependency downloads are required to build.
 
 - `raylib/src`: Raylib 6.0, https://github.com/raysan5/raylib/tree/6.0/src

@@ -1,4 +1,4 @@
-pub const OffScreenBuffer = struct {
+pub const OffScreenBuffer = extern struct {
     memory: [*]u8,
     width: u32,
     height: u32,
@@ -18,7 +18,7 @@ pub const OffScreenBuffer = struct {
     }
 };
 
-pub const ButtonState = struct {
+pub const ButtonState = extern struct {
     is_down: bool = false,
     half_transition_count: u32 = 0,
 
@@ -35,7 +35,7 @@ pub const ButtonState = struct {
     }
 };
 
-pub const ControllerInput = struct {
+pub const ControllerInput = extern struct {
     is_annalog: bool = false,
 
     // 摇杆的平均值(范围 -1.0 ~ 1.0)
@@ -81,17 +81,18 @@ pub const ControllerInput = struct {
     }
 };
 
-pub const Input = struct {
+pub const Input = extern struct {
     controllers: [5]ControllerInput = .{ .{}, .{}, .{}, .{}, .{} },
     delta_time: f32 = 0.0,
 };
 
-pub const SoundOutputBuffer = struct {
-    samples: []i16,
+pub const SoundOutputBuffer = extern struct {
+    samples: [*]i16,
+    samples_count: usize = 0,
     samples_per_second: u32,
 };
 
-pub const Memory = struct {
+pub const Memory = extern struct {
     is_initialized: bool = false,
     permanent_storage_size: usize = 0,
     permanent_storage: [*]u8,
@@ -99,3 +100,14 @@ pub const Memory = struct {
     transient_storage_size: usize = 0,
     transient_storage: [*]u8,
 };
+
+pub const UpdateAndRenderFn = *const fn (
+    memory: *Memory,
+    input: *const Input,
+    buffer: *OffScreenBuffer,
+) callconv(.c) void;
+
+pub const GetSoundSamplesFn = *const fn (
+    memory: *Memory,
+    buffer: *SoundOutputBuffer,
+) callconv(.c) void;

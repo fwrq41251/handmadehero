@@ -1,6 +1,10 @@
 {
   "lsp": {
     "zls": {
+      "binary": {
+        "path": "mise",
+        "arguments": ["exec", "--", "zls"]
+      },
       "settings": {
         "zls": {
           "enable_build_on_save": true
