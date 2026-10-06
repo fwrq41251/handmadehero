@@ -52,6 +52,22 @@ pub fn main() !void {
     // 两个子缓冲区满载，现在开始播放！
     rl.playAudioStream(stream);
 
+    const perm_size = megaBytes(64);
+    const trans_size = megaBytes(256);
+    const perm_memory = try std.heap.page_allocator.alloc(u8, perm_size);
+    defer std.heap.page_allocator.free(perm_memory);
+    @memset(perm_memory, 0); // 确保开局全零
+    const trans_memory = try std.heap.page_allocator.alloc(u8, trans_size);
+    defer std.heap.page_allocator.free(trans_memory);
+
+    var game_memory = game.GameMemory{
+        .is_initialized = false,
+        .permanent_storage_size = perm_size,
+        .permanent_storage = perm_memory.ptr,
+        .transient_storage_size = trans_size,
+        .transient_storage = trans_memory.ptr,
+    };
+
     while (!rl.windowShouldClose()) {
         var new_input = game.GameInput{
             .delta_time = rl.getFrameTime(),
@@ -70,7 +86,7 @@ pub fn main() !void {
             .pitch = width * 4,
         };
 
-        game.updateAndRender(&new_input, &game_buffer);
+        game.updateAndRender(&game_memory, &new_input, &game_buffer);
 
         rl.updateTexture(texture, pixels.ptr);
 
@@ -85,4 +101,8 @@ pub fn main() !void {
             rl.updateAudioStream(stream, sound_buffer.samples.ptr, buffer_size);
         }
     }
+}
+
+fn megaBytes(value: usize) usize {
+    return value * 1024 * 1024;
 }

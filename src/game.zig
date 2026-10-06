@@ -93,34 +93,55 @@ pub const SoundOutputBuffer = struct {
     samples_per_second: u32,
 };
 
-var offset_x: u8 = 0;
-var offset_y: u8 = 0;
+pub const GameMemory = struct {
+    is_initialized: bool = false,
+    permanent_storage_size: usize = 0,
+    permanent_storage: [*]u8,
 
-pub fn updateAndRender(input: *GameInput, buffer: *OffScreenBuffer) void {
+    transient_storage_size: usize = 0,
+    transient_storage: [*]u8,
+};
+
+pub const GameState = struct {
+    tone_hz: f32 = 256.0,
+    green_offset: u8 = 0,
+    blue_offset: u8 = 0,
+};
+
+pub fn updateAndRender(memory: *GameMemory, input: *GameInput, buffer: *OffScreenBuffer) void {
+    const state: *GameState = @ptrCast(@alignCast(memory.permanent_storage));
+
+    if (!memory.is_initialized) {
+        memory.is_initialized = true;
+        state.tone_hz = 256.0;
+        state.green_offset = 0;
+        state.blue_offset = 0;
+    }
+
     const controller = input.controllers[0];
     if (controller.move_up.isDown()) {
-        offset_y -%= 2;
+        state.green_offset -%= 2;
     }
     if (controller.move_down.isDown()) {
-        offset_y +%= 2;
+        state.green_offset +%= 2;
     }
     if (controller.move_left.isDown()) {
-        offset_x -%= 2;
+        state.blue_offset -%= 2;
     }
     if (controller.move_right.isDown()) {
-        offset_x +%= 2;
+        state.blue_offset +%= 2;
     }
 
     // 默认自增滚动
-    offset_x +%= 1;
-    offset_y +%= 1;
+    state.green_offset +%= 1;
+    state.blue_offset +%= 1;
 
     for (0..buffer.height) |y| {
         for (0..buffer.width) |x| {
             const blue: u8 = @truncate(x);
             const green: u8 = @truncate(y);
             const red: u8 = 0;
-            buffer.setPixel(@intCast(x), @intCast(y), red, green +% offset_y, blue +% offset_x, 255);
+            buffer.setPixel(@intCast(x), @intCast(y), red, green +% state.green_offset, blue +% state.blue_offset, 255);
         }
     }
 }
@@ -133,9 +154,9 @@ pub fn getSoundSamples(buffer: *SoundOutputBuffer) void {
     const sample_rate: f32 = @floatFromInt(buffer.samples_per_second);
     const phase_step: f32 = 2.0 * std.math.pi * tone_hz / sample_rate;
 
-    for (buffer.samples) |*sample| {
+    for (0..buffer.samples.len) |i| {
         const index: f32 = @floatFromInt(running_sample_index);
-        sample.* = @intFromFloat(@sin(index * phase_step) * volume);
+        buffer.samples[i] = @intFromFloat(@sin(index * phase_step) * volume);
         running_sample_index +%= 1;
     }
 }
