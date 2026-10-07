@@ -4,6 +4,7 @@ const builtin = @import("builtin");
 const rl = @import("raylib");
 
 const game_api = @import("game_api.zig");
+const game_code = @import("game_code.zig");
 
 const width = 800;
 const height = 450;
@@ -16,18 +17,8 @@ const game_lib_path: []const u8 = switch (builtin.os.tag) {
 };
 
 pub fn main() !void {
-    var game_lib = try std.DynLib.open(game_lib_path);
-    defer game_lib.close();
-
-    const update_and_render = game_lib.lookup(
-        game_api.UpdateAndRenderFn,
-        "updateAndRender",
-    ) orelse return error.MissingUpdateAndRender;
-
-    const get_sound_samples = game_lib.lookup(
-        game_api.GetSoundSamplesFn,
-        "getSoundSamples",
-    ) orelse return error.MissingGetSoundSamples;
+    var game = try game_code.Code.load(game_lib_path);
+    defer game.unload();
 
     // 初始化窗口
     rl.initWindow(width, height, "Handmade Hero - Animated Backbuffer");
@@ -86,9 +77,9 @@ pub fn main() !void {
         .transient_storage = trans_memory.ptr,
     };
 
-    get_sound_samples(&game_memory, &sound_buffer);
+    game.get_sound_samples(&game_memory, &sound_buffer);
     rl.updateAudioStream(stream, sound_buffer.samples, buffer_size);
-    get_sound_samples(&game_memory, &sound_buffer);
+    game.get_sound_samples(&game_memory, &sound_buffer);
     rl.updateAudioStream(stream, sound_buffer.samples, buffer_size);
 
     // 两个子缓冲区满载，现在开始播放！
@@ -112,7 +103,7 @@ pub fn main() !void {
             .pitch = width * 4,
         };
 
-        update_and_render(&game_memory, &new_input, &game_buffer);
+        game.update_and_render(&game_memory, &new_input, &game_buffer);
 
         rl.updateTexture(texture, pixels.ptr);
 
@@ -123,7 +114,7 @@ pub fn main() !void {
 
         // 持续检查并喂饱消耗掉的缓冲区
         while (rl.isAudioStreamProcessed(stream)) {
-            get_sound_samples(&game_memory, &sound_buffer);
+            game.get_sound_samples(&game_memory, &sound_buffer);
             rl.updateAudioStream(stream, sound_buffer.samples, buffer_size);
         }
     }
