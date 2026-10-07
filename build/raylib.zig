@@ -20,6 +20,13 @@ pub fn build(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
         .flags = &.{"-std=c99"},
     });
 
+    const bindings = b.createModule(.{
+        .root_source_file = b.path("vendor/raylib-zig/lib/raylib.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+
     switch (target.result.os.tag) {
         .macos => {
             native.addCSourceFile(.{
@@ -27,32 +34,26 @@ pub fn build(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
                 .flags = &.{ "-std=c99", "-ObjC" },
             });
             for ([_][]const u8{ "Foundation", "CoreServices", "CoreGraphics", "AppKit", "IOKit" }) |framework| {
-                native.linkFramework(framework, .{});
+                bindings.linkFramework(framework, .{});
             }
         },
         .linux => {
             native.addCMacro("_GLFW_X11", "");
             native.addCSourceFile(.{ .file = b.path("vendor/raylib/src/rglfw.c"), .flags = &.{"-std=c99"} });
             for ([_][]const u8{ "GL", "X11", "Xrandr", "Xinerama", "Xi", "Xcursor", "m", "dl", "pthread" }) |library| {
-                native.linkSystemLibrary(library, .{});
+                bindings.linkSystemLibrary(library, .{});
             }
         },
         .windows => {
             native.addCSourceFile(.{ .file = b.path("vendor/raylib/src/rglfw.c"), .flags = &.{"-std=c99"} });
             for ([_][]const u8{ "opengl32", "winmm", "gdi32" }) |library| {
-                native.linkSystemLibrary(library, .{});
+                bindings.linkSystemLibrary(library, .{});
             }
         },
         else => @panic("The Raylib build supports macOS, Linux (X11), and Windows desktop targets"),
     }
 
     const library = b.addLibrary(.{ .name = "raylib", .linkage = .static, .root_module = native });
-    const bindings = b.createModule(.{
-        .root_source_file = b.path("vendor/raylib-zig/lib/raylib.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
     bindings.linkLibrary(library);
     return bindings;
 }

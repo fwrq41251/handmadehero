@@ -1,12 +1,22 @@
 const std = @import("std");
+const builtin = @import("builtin");
+
 const rl = @import("raylib");
+
 const game_api = @import("game_api.zig");
 
 const width = 800;
 const height = 450;
 
+const game_lib_path: []const u8 = switch (builtin.os.tag) {
+    .linux => "zig-out/lib/libgame.so",
+    .macos => "zig-out/lib/libgame.dylib",
+    .windows => "zig-out/bin/game.dll",
+    else => @compileError("Unsupported platform"),
+};
+
 pub fn main() !void {
-    var game_lib = try std.DynLib.open("zig-out/lib/libgame.dylib");
+    var game_lib = try std.DynLib.open(game_lib_path);
     defer game_lib.close();
 
     const update_and_render = game_lib.lookup(

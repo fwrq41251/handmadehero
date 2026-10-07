@@ -106,6 +106,11 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    if (target.result.os.tag == .linux) {
+        exe.use_llvm = true;
+        exe.use_lld = true;
+    }
+
     const raylib = raylib_build.build(b, target, optimize);
     exe.root_module.addImport("raylib", raylib);
 
@@ -157,6 +162,11 @@ pub fn build(b: *std.Build) void {
     const exe_tests = b.addTest(.{
         .root_module = exe.root_module,
     });
+
+    if (target.result.os.tag == .linux) {
+        exe_tests.use_llvm = true;
+        exe_tests.use_lld = true;
+    }
 
     // A run step that will run the second test executable.
     const run_exe_tests = b.addRunArtifact(exe_tests);
