@@ -9,16 +9,24 @@ const game_code = @import("game_code.zig");
 const width = 800;
 const height = 450;
 
-const game_lib_path: []const u8 = switch (builtin.os.tag) {
-    .linux => "zig-out/lib/libgame.so",
-    .macos => "zig-out/lib/libgame.dylib",
-    .windows => "zig-out/bin/game.dll",
-    else => @compileError("Unsupported platform"),
-};
+fn getLibPath(comptime name: []const u8) []const u8 {
+    return switch (builtin.os.tag) {
+        .linux => "zig-out/lib/lib" ++ name ++ ".so",
+        .macos => "zig-out/lib/lib" ++ name ++ ".dylib",
+        .windows => "zig-out/bin/" ++ name ++ ".dll",
+        else => @compileError("Unsupported platform"),
+    };
+}
 
-pub fn main() !void {
-    var game = try game_code.Code.load(game_lib_path);
+const game_lib_path = getLibPath("game");
+const game_lib_copy_path = getLibPath("game_copy");
+
+pub fn main(init: std.process.Init) !void {
+    try copyGameLib(init.io);
+    var game = try game_code.Code.load(game_lib_copy_path);
     defer game.unload();
+
+    var last_write_time = try getGameLibLastWriteTime(init.io, game_lib_path);
 
     // 初始化窗口
     rl.initWindow(width, height, "Handmade Hero - Animated Backbuffer");
@@ -103,6 +111,15 @@ pub fn main() !void {
             .pitch = width * 4,
         };
 
+        const current_write_time = try getGameLibLastWriteTime(init.io, game_lib_path);
+        if (current_write_time != last_write_time) {
+            game.unload();
+            try copyGameLib(init.io);
+            const new_game = try game_code.Code.load(game_lib_copy_path);
+            game = new_game;
+            last_write_time = current_write_time;
+        }
+
         game.update_and_render(&game_memory, &new_input, &game_buffer);
 
         rl.updateTexture(texture, pixels.ptr);
@@ -122,4 +139,14 @@ pub fn main() !void {
 
 fn megaBytes(value: usize) usize {
     return value * 1024 * 1024;
+}
+
+fn getGameLibLastWriteTime(io: std.Io, path: []const u8) !i96 {
+    const stat = try std.Io.Dir.cwd().statFile(io, path, .{});
+    return stat.mtime.nanoseconds;
+}
+
+fn copyGameLib(io: std.Io) !void {
+    const cwd = std.Io.Dir.cwd();
+    try cwd.copyFile(game_lib_path, cwd, game_lib_copy_path, io, .{});
 }

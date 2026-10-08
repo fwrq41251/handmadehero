@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const api = @import("game_api.zig");
 
 pub const GameState = struct {
@@ -52,7 +53,7 @@ pub export fn updateAndRender(memory: *api.Memory, input: *const api.Input, buff
 
 pub export fn getSoundSamples(memory: *api.Memory, buffer: *api.SoundOutputBuffer) callconv(.c) void {
     const state = getState(memory);
-    const volume: i16 = 2500;
+    const volume: i16 = 250;
     const sample_rate: f32 = @floatFromInt(buffer.samples_per_second);
     const phase_step: f32 = 2.0 * std.math.pi * state.tone_hz / sample_rate;
 
