@@ -6,8 +6,8 @@ const rl = @import("raylib");
 const game_api = @import("game_api.zig");
 const game_code = @import("game_code.zig");
 
-const width = 800;
-const height = 450;
+const width = 960;
+const height = 540;
 
 fn getLibPath(comptime name: []const u8) []const u8 {
     return switch (builtin.os.tag) {

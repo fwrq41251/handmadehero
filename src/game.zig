@@ -49,6 +49,8 @@ pub export fn updateAndRender(memory: *api.Memory, input: *const api.Input, buff
             buffer.setPixel(@intCast(x), @intCast(y), red, green +% state.green_offset, blue +% state.blue_offset, 255);
         }
     }
+
+    drawRectangle(buffer, 50.0, 50.0, 200.0, 200.0, 200, 255, 0);
 }
 
 pub export fn getSoundSamples(memory: *api.Memory, buffer: *api.SoundOutputBuffer) callconv(.c) void {
@@ -62,6 +64,39 @@ pub export fn getSoundSamples(memory: *api.Memory, buffer: *api.SoundOutputBuffe
         buffer.samples[i] = @intFromFloat(@sin(index * phase_step) * volume);
         state.running_sample_index +%= 1;
     }
+}
+
+fn drawRectangle(
+    buffer: *api.OffScreenBuffer,
+    min_x: f32,
+    min_y: f32,
+    max_x: f32,
+    max_y: f32,
+    r: u8,
+    g: u8,
+    b: u8,
+) void {
+    const width: i32 = @intCast(buffer.width);
+    const height: i32 = @intCast(buffer.height);
+
+    const left = std.math.clamp(roundToInt(min_x), 0, width);
+    const top = std.math.clamp(roundToInt(min_y), 0, height);
+    const right = std.math.clamp(roundToInt(max_x), 0, width);
+    const bottom = std.math.clamp(roundToInt(max_y), 0, height);
+
+    if (left >= right or top >= bottom) return;
+
+    var y = top;
+    while (y < bottom) : (y += 1) {
+        var x = left;
+        while (x < right) : (x += 1) {
+            buffer.setPixel(@intCast(x), @intCast(y), r, g, b, 255);
+        }
+    }
+}
+
+fn roundToInt(value: f32) i32 {
+    return @intFromFloat(@round(value));
 }
 
 comptime {
