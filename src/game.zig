@@ -2,6 +2,10 @@ const std = @import("std");
 
 const api = @import("game_api.zig");
 
+const player_size: f32 = 20.0;
+const player_half_size: f32 = player_size / 2.0;
+const tile_size: f32 = 50.0;
+
 pub const GameState = struct {
     tone_hz: f32 = 256.0,
     running_sample_index: u32 = 0,
@@ -47,35 +51,63 @@ fn movePlayer(state: *GameState, input: *const api.Input) void {
     const controller: api.ControllerInput = input.controllers[0];
     const speed: f32 = 120.0;
 
+    var new_x = state.player_x;
+    var new_y = state.player_y;
+
     if (controller.move_left.isDown()) {
-        state.player_x -= speed * input.delta_time;
+        new_x -= speed * input.delta_time;
     }
     if (controller.move_right.isDown()) {
-        state.player_x += speed * input.delta_time;
+        new_x += speed * input.delta_time;
     }
     if (controller.move_up.isDown()) {
-        state.player_y -= speed * input.delta_time;
+        new_y -= speed * input.delta_time;
     }
     if (controller.move_down.isDown()) {
-        state.player_y += speed * input.delta_time;
+        new_y += speed * input.delta_time;
+    }
+
+    if (canPlayerStandAt(new_x, new_y)) {
+        state.player_x = new_x;
+        state.player_y = new_y;
     }
 }
 
-fn drawPlayer(buffer: *api.OffScreenBuffer, state: *GameState) void {
-    const player_size: f32 = 20.0;
-    const half_size: f32 = player_size / 2.0;
+fn canPlayerStandAt(x: f32, y: f32) bool {
+    const min_x = x - player_half_size;
+    const min_y = y - player_half_size;
+    const max_x = x + player_half_size;
+    const max_y = y + player_half_size;
+    const map_width = tile_size * @as(f32, @floatFromInt(tile_map[0].len));
+    const map_height = tile_size * @as(f32, @floatFromInt(tile_map.len));
 
-    const min_x = state.player_x - half_size;
-    const min_y = state.player_y - half_size;
-    const max_x = state.player_x + half_size;
-    const max_y = state.player_y + half_size;
+    // 在转换为无符号索引前，确认整个玩家矩形位于地图内。
+    if (!(min_x >= 0.0 and min_y >= 0.0 and max_x <= map_width and max_y <= map_height)) {
+        return false;
+    }
+
+    const first_x: usize = @intFromFloat(@floor(min_x / tile_size));
+    const first_y: usize = @intFromFloat(@floor(min_y / tile_size));
+    // max 不包含在矩形内，恰好贴墙时取墙前的格子。
+    const last_x: usize = @as(usize, @intFromFloat(@ceil(max_x / tile_size))) - 1;
+    const last_y: usize = @as(usize, @intFromFloat(@ceil(max_y / tile_size))) - 1;
+
+    return tile_map[first_y][first_x] == 0 and
+        tile_map[first_y][last_x] == 0 and
+        tile_map[last_y][first_x] == 0 and
+        tile_map[last_y][last_x] == 0;
+}
+
+fn drawPlayer(buffer: *api.OffScreenBuffer, state: *GameState) void {
+    const min_x = state.player_x - player_half_size;
+    const min_y = state.player_y - player_half_size;
+    const max_x = state.player_x + player_half_size;
+    const max_y = state.player_y + player_half_size;
 
     drawRectangle(buffer, min_x, min_y, max_x, max_y, 1.0, 0.0, 0.0);
 }
 
 fn drawTimeMap(buffer: *api.OffScreenBuffer) void {
-    const tile_size: f32 = 50.0;
-
     for (0..tile_map.len) |y| {
         for (0..tile_map[y].len) |x| {
             const tile = tile_map[y][x];
@@ -146,6 +178,9 @@ fn roundToInt(value: f32) i32 {
 }
 
 comptime {
+    // 四角检测要求玩家尺寸不大于瓦片尺寸。
+    std.debug.assert(player_size > 0.0 and player_size <= tile_size);
+
     const update: api.UpdateAndRenderFn = &updateAndRender;
     const sound: api.GetSoundSamplesFn = &getSoundSamples;
 
