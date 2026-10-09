@@ -9,24 +9,18 @@ const game_code = @import("game_code.zig");
 const width = 960;
 const height = 540;
 
-fn getLibPath(comptime name: []const u8) []const u8 {
-    return switch (builtin.os.tag) {
-        .linux => "zig-out/lib/lib" ++ name ++ ".so",
-        .macos => "zig-out/lib/lib" ++ name ++ ".dylib",
-        .windows => "zig-out/bin/" ++ name ++ ".dll",
-        else => @compileError("Unsupported platform"),
-    };
-}
-
-const game_lib_path = getLibPath("game");
-const game_lib_copy_path = getLibPath("game_copy");
+const game_lib_path = switch (builtin.os.tag) {
+    .linux => "zig-out/lib/libgame.so",
+    .macos => "zig-out/lib/libgame.dylib",
+    .windows => "zig-out/bin/game.dll",
+    else => @compileError("Unsupported platform"),
+};
 
 pub fn main(init: std.process.Init) !void {
-    try copyGameLib(init.io);
-    var game = try game_code.Code.load(game_lib_copy_path);
+    var game = try game_code.Code.load(game_lib_path);
     defer game.unload();
 
-    var last_write_time = try getGameLibLastWriteTime(init.io, game_lib_path);
+    var last_write_time = try getGameLibLastWriteTime(init.io);
 
     // 初始化窗口
     rl.initWindow(width, height, "Handmade Hero - Animated Backbuffer");
@@ -111,12 +105,10 @@ pub fn main(init: std.process.Init) !void {
             .pitch = width * 4,
         };
 
-        const current_write_time = try getGameLibLastWriteTime(init.io, game_lib_path);
+        const current_write_time = try getGameLibLastWriteTime(init.io);
         if (current_write_time != last_write_time) {
             game.unload();
-            try copyGameLib(init.io);
-            const new_game = try game_code.Code.load(game_lib_copy_path);
-            game = new_game;
+            game = try game_code.Code.load(game_lib_path);
             last_write_time = current_write_time;
         }
 
@@ -141,12 +133,7 @@ fn megaBytes(value: usize) usize {
     return value * 1024 * 1024;
 }
 
-fn getGameLibLastWriteTime(io: std.Io, path: []const u8) !i96 {
-    const stat = try std.Io.Dir.cwd().statFile(io, path, .{});
+fn getGameLibLastWriteTime(io: std.Io) !i96 {
+    const stat = try std.Io.Dir.cwd().statFile(io, game_lib_path, .{});
     return stat.mtime.nanoseconds;
-}
-
-fn copyGameLib(io: std.Io) !void {
-    const cwd = std.Io.Dir.cwd();
-    try cwd.copyFile(game_lib_path, cwd, game_lib_copy_path, io, .{});
 }

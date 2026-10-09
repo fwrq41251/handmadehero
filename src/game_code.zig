@@ -6,6 +6,7 @@ pub const Code = struct {
     library: std.DynLib,
     update_and_render: api.UpdateAndRenderFn,
     get_sound_samples: api.GetSoundSamplesFn,
+    loaded: bool = false,
 
     pub fn load(path: []const u8) !Code {
         var library = try std.DynLib.open(path);
@@ -25,10 +26,14 @@ pub const Code = struct {
             .library = library,
             .update_and_render = update_and_render,
             .get_sound_samples = get_sound_samples,
+            .loaded = true,
         };
     }
 
     pub fn unload(self: *Code) void {
-        self.library.close();
+        if (self.loaded) {
+            self.library.close();
+            self.loaded = false;
+        }
     }
 };

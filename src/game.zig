@@ -50,7 +50,7 @@ pub export fn updateAndRender(memory: *api.Memory, input: *const api.Input, buff
         }
     }
 
-    drawRectangle(buffer, 50.0, 50.0, 200.0, 200.0, 200, 255, 0);
+    drawRectangle(buffer, 50.0, 50.0, 200.0, 200.0, 255, 150, 0);
 }
 
 pub export fn getSoundSamples(memory: *api.Memory, buffer: *api.SoundOutputBuffer) callconv(.c) void {
