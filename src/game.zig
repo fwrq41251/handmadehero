@@ -10,6 +10,7 @@ pub const GameState = struct {
     running_sample_index: u32 = 0,
     player_x: f32 = 75.0,
     player_y: f32 = 75.0,
+    map_index: usize = 0,
 };
 
 const TileMap = struct {
@@ -28,6 +29,16 @@ const TileMap = struct {
     }
 };
 
+const World = struct {
+    tile_maps: [2]TileMap = .{ tile_map, tile_map_2 },
+
+    fn getTileMap(self: *const World, index: usize) *const TileMap {
+        return &self.tile_maps[index];
+    }
+};
+
+const world = World{};
+
 // 0 表示地面，1 表示墙壁
 const tile_map = TileMap{ .tiles = .{
     .{ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
@@ -35,8 +46,20 @@ const tile_map = TileMap{ .tiles = .{
     .{ 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1 },
     .{ 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1 },
     .{ 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1 },
-    .{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 },
+    .{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     .{ 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1 },
+    .{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 },
+    .{ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
+} };
+
+const tile_map_2 = TileMap{ .tiles = .{
+    .{ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
+    .{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 },
+    .{ 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 },
+    .{ 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 },
+    .{ 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1 },
+    .{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 },
+    .{ 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1 },
     .{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 },
     .{ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
 } };
@@ -58,7 +81,10 @@ pub export fn updateAndRender(memory: *api.Memory, input: *const api.Input, buff
     const state = getState(memory);
 
     movePlayer(state, input);
-    drawTimeMap(buffer, &tile_map);
+
+    const current_map = world.getTileMap(state.map_index);
+    drawTileMap(buffer, current_map);
+
     drawPlayer(buffer, state);
 }
 
@@ -82,10 +108,36 @@ fn movePlayer(state: *GameState, input: *const api.Input) void {
         new_y += speed * input.delta_time;
     }
 
-    if (canPlayerStandAt(&tile_map, new_x, new_y)) {
+    const current_map = world.getTileMap(state.map_index);
+    const new_map_index = getNewTileMapIndex(state.map_index, current_map, new_x, new_y);
+    if (new_map_index != state.map_index) {
+        state.map_index = new_map_index;
+        // Reset player position when changing maps
+        if (new_map_index == 0) {
+            state.player_x = 750.0;
+        } else if (new_map_index == 1) {
+            state.player_x = 50.0;
+        }
+        return;
+    }
+    if (canPlayerStandAt(current_map, new_x, new_y)) {
         state.player_x = new_x;
         state.player_y = new_y;
     }
+}
+
+fn getNewTileMapIndex(current_map_index: usize, map: *const TileMap, x: f32, y: f32) usize {
+    _ = y; // autofix
+    const tile_size = map.tile_size;
+    const tile_x: usize = @intFromFloat(@floor(x / tile_size));
+
+    // Check if the player is at the edge of the current map
+    if (tile_x == 0) {
+        return 0; // Move to the left map
+    } else if (tile_x == map.tiles[0].len - 1) {
+        return 1; // Move to the right map
+    }
+    return current_map_index; // Stay in the current map
 }
 
 fn canPlayerStandAt(map: *const TileMap, x: f32, y: f32) bool {
@@ -94,12 +146,8 @@ fn canPlayerStandAt(map: *const TileMap, x: f32, y: f32) bool {
     const max_x = x + player_half_size;
     const max_y = y + player_half_size;
     const tile_size = map.tile_size;
-    const tiles = map.tiles;
-    const map_width = tile_size * @as(f32, @floatFromInt(tiles[0].len));
-    const map_height = tile_size * @as(f32, @floatFromInt(tiles.len));
 
-    // 在转换为无符号索引前，确认整个玩家矩形位于地图内。
-    if (!(min_x >= 0.0 and min_y >= 0.0 and max_x <= map_width and max_y <= map_height)) {
+    if (min_x < 0.0 or min_y < 0.0) {
         return false;
     }
 
@@ -124,7 +172,7 @@ fn drawPlayer(buffer: *api.OffScreenBuffer, state: *GameState) void {
     drawRectangle(buffer, min_x, min_y, max_x, max_y, 1.0, 0.0, 0.0);
 }
 
-fn drawTimeMap(buffer: *api.OffScreenBuffer, map: *const TileMap) void {
+fn drawTileMap(buffer: *api.OffScreenBuffer, map: *const TileMap) void {
     const tile_size = map.tile_size;
     const tiles = map.tiles;
     for (0..tiles.len) |y| {
