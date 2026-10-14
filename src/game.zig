@@ -17,16 +17,51 @@ const TileMap = struct {
     tiles: [9][16]u8,
     tile_size: f32 = 50.0,
 
-    fn getTile(self: *const TileMap, x: usize, y: usize) u8 {
+    fn getWidth(self: *const TileMap) usize {
+        return self.tiles[0].len;
+    }
+
+    fn getHeight(self: *const TileMap) usize {
+        return self.tiles.len;
+    }
+
+    fn getTile(self: *const TileMap, tile_position: TilePosition) u8 {
+        const x = tile_position.x;
+        const y = tile_position.y;
         if (y >= self.tiles.len or x >= self.tiles[y].len) {
             return 1; // 超出地图范围视为墙壁
         }
         return self.tiles[y][x];
     }
 
-    fn isWalkable(self: *const TileMap, x: usize, y: usize) bool {
-        return self.getTile(x, y) == 0;
+    fn isWalkable(self: *const TileMap, tile_position: TilePosition) bool {
+        return self.getTile(tile_position) == 0;
     }
+
+    fn getTilePosition(self: *const TileMap, x: f32, y: f32) TilePosition {
+        const tile_x: usize = @intFromFloat(@floor(x / self.tile_size));
+        const tile_y: usize = @intFromFloat(@floor(y / self.tile_size));
+        return TilePosition{ .x = tile_x, .y = tile_y };
+    }
+
+    // 查询矩形不包含的最大边界；x、y 必须大于零。
+    fn getMaxTilePosition(self: *const TileMap, x: f32, y: f32) TilePosition {
+        const tile_x: usize = @intFromFloat(@ceil(x / self.tile_size) - 1.0);
+        const tile_y: usize = @intFromFloat(@ceil(y / self.tile_size) - 1.0);
+        return TilePosition{ .x = tile_x, .y = tile_y };
+    }
+
+    fn isAtDoor(self: *const TileMap, tile_position: TilePosition) bool {
+        const is_at_side = tile_position.x == 0 or tile_position.x == self.getWidth() - 1 or
+            tile_position.y == 0 or tile_position.y == self.getHeight() - 1;
+        const tile = self.getTile(tile_position);
+        return is_at_side and tile == 0;
+    }
+};
+
+const TilePosition = struct {
+    x: usize,
+    y: usize,
 };
 
 const World = struct {
@@ -127,17 +162,12 @@ fn movePlayer(state: *GameState, input: *const api.Input) void {
 }
 
 fn getNewTileMapIndex(current_map_index: usize, map: *const TileMap, x: f32, y: f32) usize {
-    _ = y; // autofix
-    const tile_size = map.tile_size;
-    const tile_x: usize = @intFromFloat(@floor(x / tile_size));
-
-    // Check if the player is at the edge of the current map
-    if (tile_x == 0) {
-        return 0; // Move to the left map
-    } else if (tile_x == map.tiles[0].len - 1) {
-        return 1; // Move to the right map
+    const tile_position = map.getTilePosition(x, y);
+    if (map.isAtDoor(tile_position)) {
+        return if (current_map_index == 0) 1 else 0;
+    } else {
+        return current_map_index;
     }
-    return current_map_index; // Stay in the current map
 }
 
 fn canPlayerStandAt(map: *const TileMap, x: f32, y: f32) bool {
@@ -145,22 +175,17 @@ fn canPlayerStandAt(map: *const TileMap, x: f32, y: f32) bool {
     const min_y = y - player_half_size;
     const max_x = x + player_half_size;
     const max_y = y + player_half_size;
-    const tile_size = map.tile_size;
 
     if (min_x < 0.0 or min_y < 0.0) {
         return false;
     }
 
-    const first_x: usize = @intFromFloat(@floor(min_x / tile_size));
-    const first_y: usize = @intFromFloat(@floor(min_y / tile_size));
-    // max 不包含在矩形内，恰好贴墙时取墙前的格子。
-    const last_x: usize = @as(usize, @intFromFloat(@ceil(max_x / tile_size))) - 1;
-    const last_y: usize = @as(usize, @intFromFloat(@ceil(max_y / tile_size))) - 1;
+    const pos1 = map.getTilePosition(min_x, min_y);
+    const pos4 = map.getMaxTilePosition(max_x, max_y);
+    const pos2 = TilePosition{ .x = pos4.x, .y = pos1.y };
+    const pos3 = TilePosition{ .x = pos1.x, .y = pos4.y };
 
-    return map.isWalkable(first_x, first_y) and
-        map.isWalkable(last_x, first_y) and
-        map.isWalkable(first_x, last_y) and
-        map.isWalkable(last_x, last_y);
+    return map.isWalkable(pos1) and map.isWalkable(pos2) and map.isWalkable(pos3) and map.isWalkable(pos4);
 }
 
 fn drawPlayer(buffer: *api.OffScreenBuffer, state: *GameState) void {
@@ -227,15 +252,15 @@ fn drawRectangle(
 
     if (left >= right or top >= bottom) return;
 
-    const redInt: u8 = @intCast(roundToInt(r * 255.0));
-    const greenInt: u8 = @intCast(roundToInt(g * 255.0));
-    const blueInt: u8 = @intCast(roundToInt(b * 255.0));
+    const red_int: u8 = @intCast(roundToInt(r * 255.0));
+    const green_int: u8 = @intCast(roundToInt(g * 255.0));
+    const blue_int: u8 = @intCast(roundToInt(b * 255.0));
 
     var y = top;
     while (y < bottom) : (y += 1) {
         var x = left;
         while (x < right) : (x += 1) {
-            buffer.setPixel(@intCast(x), @intCast(y), redInt, greenInt, blueInt, 255);
+            buffer.setPixel(@intCast(x), @intCast(y), red_int, green_int, blue_int, 255);
         }
     }
 }

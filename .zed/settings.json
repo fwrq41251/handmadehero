@@ -1,4 +1,15 @@
 {
+  "languages": {
+    "Zig": {
+      "formatter": "language_server",
+      "format_on_save": "on",
+      "code_actions_on_format": {
+        "source.fixAll": false
+      },
+      "tab_size": 4,
+      "hard_tabs": false
+    }
+  },
   "lsp": {
     "zls": {
       "binary": {

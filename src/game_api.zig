@@ -36,7 +36,7 @@ pub const ButtonState = extern struct {
 };
 
 pub const ControllerInput = extern struct {
-    is_annalog: bool = false,
+    is_analog: bool = false,
 
     // 摇杆的平均值(范围 -1.0 ~ 1.0)
     stick_average_x: f32 = 0.0,
