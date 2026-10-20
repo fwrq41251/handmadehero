@@ -6,12 +6,17 @@ const pixels_per_meter: f32 = 25.0;
 const player_size: f32 = 1.2;
 const player_half_size: f32 = player_size / 2.0;
 
+const WorldPosition = struct {
+    map_x: i32 = 0,
+    map_y: i32 = 0,
+    x: f32 = 3.0, // 房间内坐标，单位为米。
+    y: f32 = 3.0,
+};
+
 pub const GameState = struct {
     tone_hz: f32 = 256.0,
     running_sample_index: u32 = 0,
-    player_x: f32 = 3.0,
-    player_y: f32 = 3.0,
-    map_index: usize = 0,
+    player_position: WorldPosition = .{},
 };
 
 const TileMap = struct {
@@ -66,10 +71,17 @@ const TilePosition = struct {
 };
 
 const World = struct {
-    tile_maps: [2]TileMap = .{ tile_map, tile_map_2 },
+    // 第一维是房间行，第二维是房间列。
+    tile_maps: [1][2]TileMap = .{.{ tile_map, tile_map_2 }},
 
-    fn getTileMap(self: *const World, index: usize) *const TileMap {
-        return &self.tile_maps[index];
+    fn getTileMap(self: *const World, map_x: i32, map_y: i32) ?*const TileMap {
+        if (map_x < 0 or map_y < 0) return null;
+
+        const x: usize = @intCast(map_x);
+        const y: usize = @intCast(map_y);
+        if (y >= self.tile_maps.len or x >= self.tile_maps[y].len) return null;
+
+        return &self.tile_maps[y][x];
     }
 };
 
@@ -118,7 +130,8 @@ pub export fn updateAndRender(memory: *api.Memory, input: *const api.Input, buff
 
     movePlayer(state, input);
 
-    const current_map = world.getTileMap(state.map_index);
+    const position = state.player_position;
+    const current_map = world.getTileMap(position.map_x, position.map_y) orelse return;
     drawTileMap(buffer, current_map);
 
     drawPlayer(buffer, state);
@@ -128,47 +141,60 @@ fn movePlayer(state: *GameState, input: *const api.Input) void {
     const controller: api.ControllerInput = input.controllers[0];
     const speed: f32 = 4.0;
 
-    var new_x = state.player_x;
-    var new_y = state.player_y;
+    const position = state.player_position;
+    const current_map = world.getTileMap(position.map_x, position.map_y) orelse return;
+    var new_position = position;
 
     if (controller.move_left.isDown()) {
-        new_x -= speed * input.delta_time;
+        new_position.x -= speed * input.delta_time;
     }
     if (controller.move_right.isDown()) {
-        new_x += speed * input.delta_time;
+        new_position.x += speed * input.delta_time;
     }
     if (controller.move_up.isDown()) {
-        new_y -= speed * input.delta_time;
+        new_position.y -= speed * input.delta_time;
     }
     if (controller.move_down.isDown()) {
-        new_y += speed * input.delta_time;
+        new_position.y += speed * input.delta_time;
     }
 
-    const current_map = world.getTileMap(state.map_index);
-    const new_map_index = getNewTileMapIndex(state.map_index, current_map, new_x, new_y);
-    if (new_map_index != state.map_index) {
-        state.map_index = new_map_index;
-        // Reset player position when changing maps
-        if (new_map_index == 0) {
-            state.player_x = 29.0;
-        } else if (new_map_index == 1) {
-            state.player_x = 3.0;
-        }
-        return;
-    }
-    if (canPlayerStandAt(current_map, new_x, new_y)) {
-        state.player_x = new_x;
-        state.player_y = new_y;
+    new_position = getNewWorldPosition(current_map, new_position) orelse return;
+    const target_map = world.getTileMap(new_position.map_x, new_position.map_y) orelse return;
+    if (canPlayerStandAt(target_map, new_position.x, new_position.y)) {
+        state.player_position = new_position;
     }
 }
 
-fn getNewTileMapIndex(current_map_index: usize, map: *const TileMap, x: f32, y: f32) usize {
-    const tile_position = map.getTilePosition(x, y);
-    if (map.isAtDoor(tile_position)) {
-        return if (current_map_index == 0) 1 else 0;
-    } else {
-        return current_map_index;
+fn getNewWorldPosition(map: *const TileMap, position: WorldPosition) ?WorldPosition {
+    // 候选位置可能越界，必须在转换为无符号格子索引前检查。
+    if (position.x < 0.0 or position.y < 0.0) return null;
+
+    const tile_position = map.getTilePosition(position.x, position.y);
+    if (!map.isAtDoor(tile_position)) return position;
+
+    var result = position;
+    if (tile_position.x == 0) {
+        result.map_x -= 1;
+    } else if (tile_position.x == map.getWidth() - 1) {
+        result.map_x += 1;
+    } else if (tile_position.y == 0) {
+        result.map_y -= 1;
+    } else if (tile_position.y == map.getHeight() - 1) {
+        result.map_y += 1;
     }
+
+    const target_map = world.getTileMap(result.map_x, result.map_y) orelse return null;
+    // 仍使用入口跳转：落在目标房间内侧一格的中心。
+    if (result.map_x < position.map_x) {
+        result.x = (@as(f32, @floatFromInt(target_map.getWidth())) - 1.5) * target_map.tile_size;
+    } else if (result.map_x > position.map_x) {
+        result.x = 1.5 * target_map.tile_size;
+    } else if (result.map_y < position.map_y) {
+        result.y = (@as(f32, @floatFromInt(target_map.getHeight())) - 1.5) * target_map.tile_size;
+    } else if (result.map_y > position.map_y) {
+        result.y = 1.5 * target_map.tile_size;
+    }
+    return result;
 }
 
 fn canPlayerStandAt(map: *const TileMap, x: f32, y: f32) bool {
@@ -190,10 +216,11 @@ fn canPlayerStandAt(map: *const TileMap, x: f32, y: f32) bool {
 }
 
 fn drawPlayer(buffer: *api.OffScreenBuffer, state: *GameState) void {
-    const min_x = state.player_x - player_half_size;
-    const min_y = state.player_y - player_half_size;
-    const max_x = state.player_x + player_half_size;
-    const max_y = state.player_y + player_half_size;
+    const position = state.player_position;
+    const min_x = position.x - player_half_size;
+    const min_y = position.y - player_half_size;
+    const max_x = position.x + player_half_size;
+    const max_y = position.y + player_half_size;
 
     drawRectangleInMeters(buffer, min_x, min_y, max_x, max_y, 1.0, 0.0, 0.0);
 }
