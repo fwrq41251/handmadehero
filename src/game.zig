@@ -2,20 +2,21 @@ const std = @import("std");
 
 const api = @import("game_api.zig");
 
-const player_size: f32 = 20.0;
+const pixels_per_meter: f32 = 25.0;
+const player_size: f32 = 1.2;
 const player_half_size: f32 = player_size / 2.0;
 
 pub const GameState = struct {
     tone_hz: f32 = 256.0,
     running_sample_index: u32 = 0,
-    player_x: f32 = 75.0,
-    player_y: f32 = 75.0,
+    player_x: f32 = 3.0,
+    player_y: f32 = 3.0,
     map_index: usize = 0,
 };
 
 const TileMap = struct {
     tiles: [9][16]u8,
-    tile_size: f32 = 50.0,
+    tile_size: f32 = 2.0,
 
     fn getWidth(self: *const TileMap) usize {
         return self.tiles[0].len;
@@ -125,7 +126,7 @@ pub export fn updateAndRender(memory: *api.Memory, input: *const api.Input, buff
 
 fn movePlayer(state: *GameState, input: *const api.Input) void {
     const controller: api.ControllerInput = input.controllers[0];
-    const speed: f32 = 120.0;
+    const speed: f32 = 4.0;
 
     var new_x = state.player_x;
     var new_y = state.player_y;
@@ -149,9 +150,9 @@ fn movePlayer(state: *GameState, input: *const api.Input) void {
         state.map_index = new_map_index;
         // Reset player position when changing maps
         if (new_map_index == 0) {
-            state.player_x = 750.0;
+            state.player_x = 29.0;
         } else if (new_map_index == 1) {
-            state.player_x = 50.0;
+            state.player_x = 3.0;
         }
         return;
     }
@@ -194,7 +195,7 @@ fn drawPlayer(buffer: *api.OffScreenBuffer, state: *GameState) void {
     const max_x = state.player_x + player_half_size;
     const max_y = state.player_y + player_half_size;
 
-    drawRectangle(buffer, min_x, min_y, max_x, max_y, 1.0, 0.0, 0.0);
+    drawRectangleInMeters(buffer, min_x, min_y, max_x, max_y, 1.0, 0.0, 0.0);
 }
 
 fn drawTileMap(buffer: *api.OffScreenBuffer, map: *const TileMap) void {
@@ -210,13 +211,13 @@ fn drawTileMap(buffer: *api.OffScreenBuffer, map: *const TileMap) void {
             const min_y = float_y * tile_size;
             const max_x = min_x + tile_size;
             const max_y = min_y + tile_size;
-            drawRectangle(buffer, min_x, min_y, max_x, max_y, color[0], color[1], color[2]);
+            drawRectangleInMeters(buffer, min_x, min_y, max_x, max_y, color[0], color[1], color[2]);
         }
     }
 }
 
 fn clearBackground(buffer: *api.OffScreenBuffer) void {
-    drawRectangle(buffer, 0.0, 0.0, @floatFromInt(buffer.width), @floatFromInt(buffer.height), 0.5, 0.5, 0.5);
+    drawRectangleInPixels(buffer, 0.0, 0.0, @floatFromInt(buffer.width), @floatFromInt(buffer.height), 0.5, 0.5, 0.5);
 }
 
 pub export fn getSoundSamples(memory: *api.Memory, buffer: *api.SoundOutputBuffer) callconv(.c) void {
@@ -232,7 +233,25 @@ pub export fn getSoundSamples(memory: *api.Memory, buffer: *api.SoundOutputBuffe
     }
 }
 
-fn drawRectangle(
+fn drawRectangleInMeters(
+    buffer: *api.OffScreenBuffer,
+    min_x: f32,
+    min_y: f32,
+    max_x: f32,
+    max_y: f32,
+    r: f32,
+    g: f32,
+    b: f32,
+) void {
+    const pixel_min_x = min_x * pixels_per_meter;
+    const pixel_min_y = min_y * pixels_per_meter;
+    const pixel_max_x = max_x * pixels_per_meter;
+    const pixel_max_y = max_y * pixels_per_meter;
+
+    drawRectangleInPixels(buffer, pixel_min_x, pixel_min_y, pixel_max_x, pixel_max_y, r, g, b);
+}
+
+fn drawRectangleInPixels(
     buffer: *api.OffScreenBuffer,
     min_x: f32,
     min_y: f32,
