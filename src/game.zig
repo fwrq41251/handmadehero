@@ -18,12 +18,10 @@ const WorldPosition = struct {
     fn move(self: *WorldPosition, delta_x: f32, delta_y: f32) void {
         self.offset_x += delta_x;
         self.offset_y += delta_y;
-        recanonicalizePosition(self);
+        self.recanonicalize();
     }
 
-    fn recanonicalizePosition(
-        self: *WorldPosition,
-    ) void {
+    fn recanonicalize(self: *WorldPosition) void {
         const delta_x: i32 = @intFromFloat(@floor(self.offset_x / tile_size));
         const delta_y: i32 = @intFromFloat(@floor(self.offset_y / tile_size));
 
@@ -50,7 +48,7 @@ pub const GameState = struct {
     running_sample_index: u32 = 0,
     player_position: WorldPosition = .{
         .tile_x = 1,
-        .tile_y = 1,
+        .tile_y = 7,
         .offset_x = 1.0,
         .offset_y = 1.0,
     },
@@ -65,7 +63,8 @@ const TileMap = struct {
         if (y >= self.tiles.len or x >= self.tiles[y].len) {
             return 1; // 超出地图范围视为墙壁
         }
-        return self.tiles[y][x];
+        const row = self.tiles.len - 1 - y;
+        return self.tiles[row][x];
     }
 
     fn isWalkable(self: *const TileMap, tile_position: TilePosition) bool {
@@ -181,10 +180,10 @@ fn movePlayer(state: *GameState, input: *const api.Input) void {
         dx += speed * input.delta_time;
     }
     if (controller.move_up.isDown()) {
-        dy -= speed * input.delta_time;
+        dy += speed * input.delta_time;
     }
     if (controller.move_down.isDown()) {
-        dy += speed * input.delta_time;
+        dy -= speed * input.delta_time;
     }
     new_position.move(dx, dy);
 
@@ -194,21 +193,21 @@ fn movePlayer(state: *GameState, input: *const api.Input) void {
 }
 
 fn canPlayerStandAt(position: WorldPosition) bool {
-    const top_left = offsetPosition(position, -player_half_size, -player_half_size);
-    var top_right = offsetPosition(position, player_half_size, -player_half_size);
-    var bottom_left = offsetPosition(position, -player_half_size, player_half_size);
-    var bottom_right = offsetPosition(position, player_half_size, player_half_size);
+    const min_min = offsetPosition(position, -player_half_size, -player_half_size);
+    var max_min = offsetPosition(position, player_half_size, -player_half_size);
+    var min_max = offsetPosition(position, -player_half_size, player_half_size);
+    var max_max = offsetPosition(position, player_half_size, player_half_size);
 
-    // 碰撞范围不包含右侧和底部边界；这里只调整查询格子，不再规范化。
-    if (top_right.offset_x == 0.0) top_right.tile_x -= 1;
-    if (bottom_left.offset_y == 0.0) bottom_left.tile_y -= 1;
-    if (bottom_right.offset_x == 0.0) bottom_right.tile_x -= 1;
-    if (bottom_right.offset_y == 0.0) bottom_right.tile_y -= 1;
+    // 碰撞范围不包含最大 X/Y 边界；这里只调整查询格子，不再规范化。
+    if (max_min.offset_x == 0.0) max_min.tile_x -= 1;
+    if (min_max.offset_y == 0.0) min_max.tile_y -= 1;
+    if (max_max.offset_x == 0.0) max_max.tile_x -= 1;
+    if (max_max.offset_y == 0.0) max_max.tile_y -= 1;
 
-    return world.isWalkable(top_left) and world.isWalkable(top_right) and world.isWalkable(bottom_left) and world.isWalkable(bottom_right);
+    return world.isWalkable(min_min) and world.isWalkable(max_min) and world.isWalkable(min_max) and world.isWalkable(max_max);
 }
 
-fn drawPlayer(buffer: *api.OffScreenBuffer, state: *GameState) void {
+fn drawPlayer(buffer: *api.OffScreenBuffer, state: *const GameState) void {
     const position = state.player_position;
     const x = @as(f32, @floatFromInt(@mod(position.tile_x, tile_map_width))) * tile_size + position.offset_x;
     const y = @as(f32, @floatFromInt(@mod(position.tile_y, tile_map_height))) * tile_size + position.offset_y;
@@ -221,13 +220,11 @@ fn drawPlayer(buffer: *api.OffScreenBuffer, state: *GameState) void {
 }
 
 fn drawTileMap(buffer: *api.OffScreenBuffer, map: *const TileMap) void {
-    const tiles = map.tiles;
-    for (0..tiles.len) |y| {
-        for (0..tiles[y].len) |x| {
-            const tile = tiles[y][x];
+    for (map.tiles, 0..) |row, y| {
+        for (row, 0..) |tile, x| {
             const color: [3]f32 = if (tile == 1) .{ 0.0, 0.0, 0.0 } else .{ 1.0, 1.0, 1.0 };
             const float_x: f32 = @floatFromInt(x);
-            const float_y: f32 = @floatFromInt(y);
+            const float_y: f32 = @floatFromInt(map.tiles.len - 1 - y);
             const min_x = float_x * tile_size;
             const min_y = float_y * tile_size;
             const max_x = min_x + tile_size;
@@ -264,10 +261,13 @@ fn drawRectangleInMeters(
     g: f32,
     b: f32,
 ) void {
+    const screen_origin_y =
+        @as(f32, tile_map_height) * tile_size * pixels_per_meter;
+
     const pixel_min_x = min_x * pixels_per_meter;
-    const pixel_min_y = min_y * pixels_per_meter;
+    const pixel_min_y = screen_origin_y - max_y * pixels_per_meter;
     const pixel_max_x = max_x * pixels_per_meter;
-    const pixel_max_y = max_y * pixels_per_meter;
+    const pixel_max_y = screen_origin_y - min_y * pixels_per_meter;
 
     drawRectangleInPixels(buffer, pixel_min_x, pixel_min_y, pixel_max_x, pixel_max_y, r, g, b);
 }
