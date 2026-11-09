@@ -23,8 +23,8 @@ const WorldPosition = struct {
     }
 
     fn recanonicalize(self: *WorldPosition) void {
-        const delta_x: i32 = @intFromFloat(@floor(self.offset_x / tile_size));
-        const delta_y: i32 = @intFromFloat(@floor(self.offset_y / tile_size));
+        const delta_x: i32 = roundToInt(self.offset_x / tile_size);
+        const delta_y: i32 = roundToInt(self.offset_y / tile_size);
 
         self.tile_x += delta_x;
         self.tile_y += delta_y;
@@ -89,8 +89,8 @@ pub const GameState = struct {
     player_position: WorldPosition = .{
         .tile_x = 1,
         .tile_y = 7,
-        .offset_x = 1.0,
-        .offset_y = 1.0,
+        .offset_x = 0.0,
+        .offset_y = 0.0,
     },
 };
 
@@ -122,11 +122,6 @@ const World = struct {
         const p = getChunkPosition(tile_x, tile_y);
         const chunk = self.getTileChunk(p.chunk_x, p.chunk_y) orelse return 1;
         return chunk.tiles[p.local_y][p.local_x];
-    }
-
-    fn isWalkable(self: *const World, position: WorldPosition) bool {
-        const tile = self.getTile(position.tile_x, position.tile_y);
-        return tile == 0;
     }
 };
 
@@ -229,18 +224,26 @@ fn movePlayer(state: *GameState, input: *const api.Input) void {
 }
 
 fn canPlayerStandAt(position: WorldPosition) bool {
-    const min_min = offsetPosition(position, -player_half_size, -player_half_size);
-    var max_min = offsetPosition(position, player_half_size, -player_half_size);
-    var min_max = offsetPosition(position, -player_half_size, player_half_size);
-    var max_max = offsetPosition(position, player_half_size, player_half_size);
+    const left_down_corner_tile = getCornerTile(position, -player_half_size, -player_half_size);
+    const right_down_corner_tile = getCornerTile(position, player_half_size, -player_half_size);
+    const left_up_corner_tile = getCornerTile(position, -player_half_size, player_half_size);
+    const right_up_corner_tile = getCornerTile(position, player_half_size, player_half_size);
 
-    // 碰撞范围不包含最大 X/Y 边界；这里只调整查询格子，不再规范化。
-    if (max_min.offset_x == 0.0) max_min.tile_x -= 1;
-    if (min_max.offset_y == 0.0) min_max.tile_y -= 1;
-    if (max_max.offset_x == 0.0) max_max.tile_x -= 1;
-    if (max_max.offset_y == 0.0) max_max.tile_y -= 1;
+    return left_down_corner_tile == 0 and right_down_corner_tile == 0 and
+        left_up_corner_tile == 0 and right_up_corner_tile == 0;
+}
 
-    return world.isWalkable(min_min) and world.isWalkable(max_min) and world.isWalkable(min_max) and world.isWalkable(max_max);
+fn getCornerTile(position: WorldPosition, dx: f32, dy: f32) u8 {
+    var corner = offsetPosition(position, dx, dy);
+    const half_tile = tile_size / 2.0;
+
+    // dx/dy 为正表示该轴的最大边，为负表示最小边。
+    if (dx > 0 and corner.offset_x == -half_tile) corner.tile_x -= 1;
+    if (dx < 0 and corner.offset_x == half_tile) corner.tile_x += 1;
+    if (dy > 0 and corner.offset_y == -half_tile) corner.tile_y -= 1;
+    if (dy < 0 and corner.offset_y == half_tile) corner.tile_y += 1;
+
+    return world.getTile(corner.tile_x, corner.tile_y);
 }
 
 fn drawPlayer(
@@ -258,10 +261,10 @@ fn drawPlayer(
 }
 
 fn drawTileMap(buffer: *api.OffScreenBuffer, camera_position: WorldPosition) void {
-    const half_width = @as(f32, @floatFromInt(buffer.width)) * 0.5 / pixels_per_meter;
-    const half_height = @as(f32, @floatFromInt(buffer.height)) * 0.5 / pixels_per_meter;
-    const min_position = offsetPosition(camera_position, -half_width, -half_height);
-    const max_position = offsetPosition(camera_position, half_width, half_height);
+    const half_width_in_meter = @as(f32, @floatFromInt(buffer.width)) * 0.5 / pixels_per_meter;
+    const half_height_in_meter = @as(f32, @floatFromInt(buffer.height)) * 0.5 / pixels_per_meter;
+    const min_position = offsetPosition(camera_position, -half_width_in_meter, -half_height_in_meter);
+    const max_position = offsetPosition(camera_position, half_width_in_meter, half_height_in_meter);
 
     // 包含窗口边缘的部分格子；最终由像素绘制函数裁剪。
     var tile_y = min_position.tile_y;
@@ -278,10 +281,10 @@ fn drawTileMap(buffer: *api.OffScreenBuffer, camera_position: WorldPosition) voi
 
             drawRectangleInMeters(
                 buffer,
-                delta.x,
-                delta.y,
-                delta.x + tile_size,
-                delta.y + tile_size,
+                delta.x - tile_size / 2,
+                delta.y - tile_size / 2,
+                delta.x + tile_size / 2,
+                delta.y + tile_size / 2,
                 shade,
                 shade,
                 shade,
