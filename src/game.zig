@@ -1,14 +1,12 @@
 const std = @import("std");
 
 const api = @import("game_api.zig");
+const World = @import("world.zig").World;
 
 const pixels_per_meter: f32 = 25.0;
 const player_size: f32 = 1.2;
 const player_half_size: f32 = player_size / 2.0;
 const tile_size: f32 = 2.0;
-const tile_map_width = 16;
-const tile_map_height = 9;
-const chunk_size = 16;
 
 const WorldPosition = struct {
     tile_x: i32 = 0,
@@ -63,26 +61,6 @@ fn getPositionDifference(position: WorldPosition, origin: WorldPosition) Positio
     };
 }
 
-const ChunkPosition = struct {
-    chunk_x: i32,
-    chunk_y: i32,
-    local_x: usize,
-    local_y: usize,
-};
-
-fn getChunkPosition(tile_x: i32, tile_y: i32) ChunkPosition {
-    return .{
-        .chunk_x = @divFloor(tile_x, chunk_size),
-        .chunk_y = @divFloor(tile_y, chunk_size),
-        .local_x = @intCast(@mod(tile_x, chunk_size)),
-        .local_y = @intCast(@mod(tile_y, chunk_size)),
-    };
-}
-
-const TileChunk = struct {
-    tiles: [chunk_size][chunk_size]u8 = .{.{1} ** chunk_size} ** chunk_size,
-};
-
 pub const GameState = struct {
     tone_hz: f32 = 256.0,
     running_sample_index: u32 = 0,
@@ -92,91 +70,18 @@ pub const GameState = struct {
         .offset_x = 0.0,
         .offset_y = 0.0,
     },
+    world: World,
 };
-
-const TileMap = struct {
-    tiles: [tile_map_height][tile_map_width]u8,
-};
-
-const World = struct {
-    chunks: [1][2]TileChunk = createChunks(),
-
-    fn getTileChunk(
-        self: *const World,
-        chunk_x: i32,
-        chunk_y: i32,
-    ) ?*const TileChunk {
-        if (chunk_x < 0 or chunk_y < 0) return null;
-
-        const x: usize = @intCast(chunk_x);
-        const y: usize = @intCast(chunk_y);
-
-        if (y >= self.chunks.len or x >= self.chunks[y].len) {
-            return null;
-        }
-
-        return &self.chunks[y][x];
-    }
-
-    fn getTile(self: *const World, tile_x: i32, tile_y: i32) u8 {
-        const p = getChunkPosition(tile_x, tile_y);
-        const chunk = self.getTileChunk(p.chunk_x, p.chunk_y) orelse return 1;
-        return chunk.tiles[p.local_y][p.local_x];
-    }
-};
-
-const world = World{};
-
-// 0 表示地面，1 表示墙壁
-const tile_map = TileMap{ .tiles = .{
-    .{ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
-    .{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 },
-    .{ 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1 },
-    .{ 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1 },
-    .{ 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1 },
-    .{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    .{ 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1 },
-    .{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 },
-    .{ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
-} };
-
-const tile_map_2 = TileMap{ .tiles = .{
-    .{ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
-    .{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 },
-    .{ 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 },
-    .{ 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 },
-    .{ 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1 },
-    .{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 },
-    .{ 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1 },
-    .{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 },
-    .{ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
-} };
-
-fn createChunks() [1][2]TileChunk {
-    var chunks: [1][2]TileChunk = .{.{ .{}, .{} }};
-    const maps = [_]TileMap{ tile_map, tile_map_2 };
-
-    for (maps, 0..) |map, map_x| {
-        for (map.tiles, 0..) |row, row_index| {
-            // 手写地图从上往下排列，chunk 内的 Y 则从下往上增加。
-            const tile_y = tile_map_height - 1 - row_index;
-            for (row, 0..) |tile, local_x| {
-                const tile_x = map_x * tile_map_width + local_x;
-                chunks[tile_y / chunk_size][tile_x / chunk_size]
-                    .tiles[tile_y % chunk_size][tile_x % chunk_size] = tile;
-            }
-        }
-    }
-
-    return chunks;
-}
 
 fn getState(memory: *api.Memory) *GameState {
     std.debug.assert(memory.permanent_storage_size >= @sizeOf(GameState));
     const state: *GameState = @ptrCast(@alignCast(memory.permanent_storage));
 
     if (!memory.is_initialized) {
-        state.* = .{};
+        state.* = .{ .world = undefined };
+
+        const world_memory = memory.permanent_storage[(@sizeOf(GameState))..memory.permanent_storage_size];
+        state.world = World.init(world_memory);
         memory.is_initialized = true;
     }
     return state;
@@ -190,8 +95,7 @@ pub export fn updateAndRender(memory: *api.Memory, input: *const api.Input, buff
     movePlayer(state, input);
 
     const camera_position = state.player_position;
-    drawTileMap(buffer, camera_position);
-
+    drawTileMap(buffer, state, camera_position);
     drawPlayer(buffer, state, camera_position);
 }
 
@@ -218,22 +122,23 @@ fn movePlayer(state: *GameState, input: *const api.Input) void {
     }
     new_position.move(dx, dy);
 
-    if (canPlayerStandAt(new_position)) {
+    const world = &state.world;
+    if (canPlayerStandAt(world, new_position)) {
         state.player_position = new_position;
     }
 }
 
-fn canPlayerStandAt(position: WorldPosition) bool {
-    const left_down_corner_tile = getCornerTile(position, -player_half_size, -player_half_size);
-    const right_down_corner_tile = getCornerTile(position, player_half_size, -player_half_size);
-    const left_up_corner_tile = getCornerTile(position, -player_half_size, player_half_size);
-    const right_up_corner_tile = getCornerTile(position, player_half_size, player_half_size);
+fn canPlayerStandAt(world: *const World, position: WorldPosition) bool {
+    const left_down_corner_tile = getCornerTile(world, position, -player_half_size, -player_half_size);
+    const right_down_corner_tile = getCornerTile(world, position, player_half_size, -player_half_size);
+    const left_up_corner_tile = getCornerTile(world, position, -player_half_size, player_half_size);
+    const right_up_corner_tile = getCornerTile(world, position, player_half_size, player_half_size);
 
     return left_down_corner_tile == 0 and right_down_corner_tile == 0 and
         left_up_corner_tile == 0 and right_up_corner_tile == 0;
 }
 
-fn getCornerTile(position: WorldPosition, dx: f32, dy: f32) u8 {
+fn getCornerTile(world: *const World, position: WorldPosition, dx: f32, dy: f32) u8 {
     var corner = offsetPosition(position, dx, dy);
     const half_tile = tile_size / 2.0;
 
@@ -260,11 +165,12 @@ fn drawPlayer(
     drawRectangleInMeters(buffer, min_x, min_y, max_x, max_y, 1.0, 0.0, 0.0);
 }
 
-fn drawTileMap(buffer: *api.OffScreenBuffer, camera_position: WorldPosition) void {
+fn drawTileMap(buffer: *api.OffScreenBuffer, state: *const GameState, camera_position: WorldPosition) void {
     const half_width_in_meter = @as(f32, @floatFromInt(buffer.width)) * 0.5 / pixels_per_meter;
     const half_height_in_meter = @as(f32, @floatFromInt(buffer.height)) * 0.5 / pixels_per_meter;
     const min_position = offsetPosition(camera_position, -half_width_in_meter, -half_height_in_meter);
     const max_position = offsetPosition(camera_position, half_width_in_meter, half_height_in_meter);
+    const world = &state.world;
 
     // 包含窗口边缘的部分格子；最终由像素绘制函数裁剪。
     var tile_y = min_position.tile_y;
